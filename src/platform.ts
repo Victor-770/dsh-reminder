@@ -6,6 +6,21 @@ import { platform as osPlatform } from "node:os";
 // covers mac / linux / wsl).
 export type Platform = "mac" | "linux" | "wsl" | "win" | "unknown";
 
+/**
+ * Spread into any `spawn`/`execSync` options to stop Windows from allocating a
+ * console window for a console-subsystem child.
+ *
+ * The desktop harness (Electron main process) has no console of its own, so
+ * CreateProcess hands every console child a brand-new console: `powershell.exe`
+ * (audio + WinForms popup), `where` (player detection), and the Chocolatey
+ * `ffplay` shim — a CONSOLE-subsystem executable — each flashed a terminal
+ * window on every sound and notification. `windowsHide` makes Node create the
+ * child with CREATE_NO_WINDOW, which suppresses that window *without* detaching
+ * it from the interactive desktop, so the WinForms popup still renders. The
+ * option is ignored on macOS/Linux.
+ */
+export const NO_CONSOLE_WINDOW = { windowsHide: true } as const;
+
 export function detectPlatform(): Platform {
   const p = osPlatform();
   if (p === "darwin") return "mac";
@@ -26,7 +41,7 @@ export function detectLinuxPlayer(): string | null {
   if (cachedLinuxPlayer !== undefined) return cachedLinuxPlayer;
   for (const cmd of ["pw-play", "paplay", "ffplay", "mpv", "play", "aplay"]) {
     try {
-      execSync(`command -v ${cmd}`, { stdio: "pipe" });
+      execSync(`command -v ${cmd}`, { stdio: "pipe", ...NO_CONSOLE_WINDOW });
       cachedLinuxPlayer = cmd;
       return cmd;
     } catch {}
@@ -49,7 +64,7 @@ export function detectPwshBin(): string | null {
     try {
       // `command -v` works in git-bash / WSL; on native Windows we use `where`.
       const checker = process.platform === "win32" ? `where ${bin}` : `command -v ${bin}`;
-      execSync(checker, { stdio: "pipe" });
+      execSync(checker, { stdio: "pipe", ...NO_CONSOLE_WINDOW });
       cachedPwshBin = bin;
       return bin;
     } catch {}
@@ -69,7 +84,7 @@ export function detectWindowsPlayer(): string | null {
   for (const cmd of ["ffplay", "mpv"]) {
     try {
       const checker = process.platform === "win32" ? `where ${cmd}` : `command -v ${cmd}`;
-      execSync(checker, { stdio: "pipe" });
+      execSync(checker, { stdio: "pipe", ...NO_CONSOLE_WINDOW });
       cachedWinPlayer = cmd;
       return cmd;
     } catch {}
@@ -92,7 +107,7 @@ export function detectWindowsPlayer(): string | null {
 export function wslToWindowsPath(file: string): string {
   try {
     const quoted = `'${file.replace(/'/g, `'\\''`)}'`
-    const out = execSync(`wslpath -w ${quoted}`, { stdio: ["ignore", "pipe", "ignore"] }).toString().trim()
+    const out = execSync(`wslpath -w ${quoted}`, { stdio: ["ignore", "pipe", "ignore"], ...NO_CONSOLE_WINDOW }).toString().trim()
     if (out.length > 0) return out
   } catch {}
   return file

@@ -3,11 +3,14 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { DATA_DIR } from "./constants.ts";
 import type { NotifyStatus } from "./notify-content.ts";
-import { detectPlatform, detectPwshBin, type Platform } from "./platform.ts";
+import { detectPlatform, detectPwshBin, NO_CONSOLE_WINDOW, type Platform } from "./platform.ts";
 
 export const DEFAULT_ICON_PATH = join(DATA_DIR, "peon-icon.png");
 
-export type Notifier = "osascript" | "notify-send" | "powershell" | "winforms";
+export type Notifier = "osascript" | "notify-send" | "powershell" | "wintoast" | "winforms";
+
+/** AppUserModelID the native Windows toast is attributed to. */
+export const TOAST_AUMID = "peon-ping";
 
 export interface NotifyCommand {
   bin: string;
@@ -16,7 +19,7 @@ export interface NotifyCommand {
 
 function defaultCommandExists(cmd: string): boolean {
   try {
-    execSync(`command -v ${cmd}`, { stdio: "pipe" });
+    execSync(`command -v ${cmd}`, { stdio: "pipe", ...NO_CONSOLE_WINDOW });
     return true;
   } catch {
     return false;
@@ -37,11 +40,11 @@ export function detectNotifier(
     case "linux":
       return commandExists("notify-send") ? "notify-send" : null;
     case "win":
-      // Fork: native Windows uses a custom WinForms popup (multi-screen,
-      // icon on the left, text left-aligned, top-most, auto-dismiss after
-      // 4s). Bypasses the Windows Toast system entirely — no AUMID
-      // registration, no Focus Assist suppression, more visually prominent.
-      return "winforms";
+      // Fork: native Windows shows a real Windows toast (bottom-right, and in
+      // the Action Center) instead of the self-drawn WinForms banner. The
+      // banner renderer is kept as an explicit `winforms` choice, but a
+      // native toast is what the OS and users expect.
+      return "wintoast";
     case "wsl":
       return "powershell";
     default:
@@ -78,6 +81,9 @@ export function buildNotifyCommand(
       if (iconPath) args.push(`--icon=${iconPath}`);
       args.push(title, body);
       return { bin: "notify-send", args };
+    }
+    case "wintoast": {
+      return buildWinToastCommand(safeTitle, safeBody, iconPath);
     }
     case "winforms": {
       return buildWinFormsCommand(safeTitle, safeBody, iconPath, status, promptLine);
@@ -138,11 +144,17 @@ export function sendDesktopNotification(
   // for WinForms — the PowerShell process runs to completion but no window
   // ever renders on the interactive desktop. Other platforms keep detached:
   // true so short-lived notifiers (osascript/notify-send) survive parent exit.
+  //
+  // windowsHide (NO_CONSOLE_WINDOW) is what keeps the terminal window from
+  // flashing on the desktop harness: it only adds CREATE_NO_WINDOW, so it
+  // does not disturb the interactive-desktop association the WinForms form
+  // needs (verified: the popup still renders with the flag set).
   const isWindows = platform === "win";
   try {
     const child = spawn(cmd.bin, cmd.args, {
       stdio: "ignore",
       detached: !isWindows,
+      ...NO_CONSOLE_WINDOW,
     });
     child.unref();
     return true;
@@ -151,20 +163,63 @@ export function sendDesktopNotification(
   }
 }
 
-// Fork: native Windows custom popup using WinForms.
+/**
+ * Native Windows toast (WinRT): the shell renders it in the bottom-right and
+ * leaves it in the Action Center — the same surface every other app uses.
+ *
+ * The AUMID registration is what makes it work at all. WinRT silently drops a
+ * toast whose AppUserModelID has no identity, and an unpackaged desktop app has
+ * no Start-menu shortcut to inherit one from. Registering
+ * `HKCU\Software\Classes\AppUserModelId\<aumid>` (DisplayName + IconUri) gives
+ * it an identity; without that entry `Show()` returns normally and nothing
+ * ever appears — exactly the failure mode the old WSL-style toast hit.
+ */
+function buildWinToastCommand(title: string, body: string, iconPath?: string): NotifyCommand {
+  const psSingle = (s: string) => s.replace(/'/g, "''");
+  const iconWinPath = iconPath ? iconPath.replace(/\//g, "\\") : "";
+  const lines = [
+    `$aumid = '${TOAST_AUMID}'`,
+    `$key = 'HKCU:\\Software\\Classes\\AppUserModelId\\' + $aumid`,
+    `New-Item -Path $key -Force | Out-Null`,
+    `Set-ItemProperty -Path $key -Name 'DisplayName' -Value '${psSingle(TOAST_AUMID)}'`,
+  ];
+  if (iconWinPath !== "") {
+    lines.push(`Set-ItemProperty -Path $key -Name 'IconUri' -Value '${psSingle(iconWinPath)}'`);
+  }
+  lines.push(
+    `[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null`,
+    `$template = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent([Windows.UI.Notifications.ToastTemplateType]::ToastText02)`,
+    `$text = $template.GetElementsByTagName('text')`,
+    `$text.Item(0).AppendChild($template.CreateTextNode('${psSingle(title)}')) > $null`,
+    `$text.Item(1).AppendChild($template.CreateTextNode('${psSingle(body)}')) > $null`,
+    // Silence the toast: the Peon clip *is* the notification sound, so the
+    // shell's default chime would double it up. The `<audio silent="true"/>`
+    // element is the form WinRT accepts here — the typed ToastAudio API is not
+    // resolvable from Windows PowerShell 5.1.
+    `$audio = $template.CreateElement('audio')`,
+    `$audio.SetAttribute('silent', 'true')`,
+    `$template.DocumentElement.AppendChild($audio) > $null`,
+    `$toast = [Windows.UI.Notifications.ToastNotification]::new($template)`,
+    `[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($aumid).Show($toast)`,
+  );
+  return {
+    bin: detectPwshBin() ?? "powershell.exe",
+    args: ["-NoProfile", "-NonInteractive", "-Command", lines.join("\n")],
+  };
+}
+
+// Legacy renderer: a self-drawn WinForms banner, kept as an explicit choice
+// now that `win` selects the native toast above.
 //
-// Why not Windows Toast (the upstream WSL code path)?
-//   1. WinRT Toast from a `-NonInteractive -Command` background PowerShell
-//      process silently fails to render (same root cause as WPF MediaPlayer).
-//   2. Even when it renders, Toast requires a registered AppUserModelID
-//      (AUMID) in the registry AND a Start Menu shortcut for scenario=
-//      reminder to work; otherwise Windows drops the notification silently.
-//   3. Toast is corner-only, small, and visually weak.
+// Its remaining virtue is unconditional rendering: a borderless form does not
+// go through the shell's notification plumbing at all, so it still appears on
+// machines where toasts are disabled system-wide or swallowed by Focus Assist.
 //
-// WinForms Form.Show + Application.Run works reliably in a spawned
-// PowerShell process. We get: arbitrary position (1/4 screen height),
-// multi-monitor support, custom layout (icon left + text left-aligned),
-// no AUMID/registry/Start Menu dependencies, not suppressed by Focus Assist.
+// The original rationale for preferring it ("WinRT Toast from
+// `-NonInteractive -Command` silently fails") was a misdiagnosis: the toast
+// never rendered because its AppUserModelID had never been registered, not
+// because of the launch flags. With registration it works from exactly those
+// flags — see buildWinToastCommand.
 function buildWinFormsCommand(
   title: string,
   body: string,

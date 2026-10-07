@@ -1,7 +1,7 @@
 import { execSync, spawn, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { detectLinuxPlayer, detectPlatform, detectPwshBin, detectWindowsPlayer, wslToWindowsPath, type Platform } from "./platform.ts";
+import { detectLinuxPlayer, detectPlatform, detectPwshBin, detectWindowsPlayer, NO_CONSOLE_WINDOW, wslToWindowsPath, type Platform } from "./platform.ts";
 import { saveState } from "./config.ts";
 import { resolveIcon, sendDesktopNotification, type NotifyOptions } from "./notification.ts";
 import type { NotifyStatus } from "./notify-content.ts";
@@ -58,7 +58,7 @@ function wslNativeAvailable(): boolean {
   wslNativeChecked = false;
   try {
     if (!existsSync("/mnt/wslg/PulseServer")) return false;
-    execSync("command -v paplay", { stdio: "pipe" });
+    execSync("command -v paplay", { stdio: "pipe", ...NO_CONSOLE_WINDOW });
     wslNativeChecked = true;
   } catch {}
   return wslNativeChecked;
@@ -120,6 +120,7 @@ Remove-Item -LiteralPath $dst -Force -ErrorAction SilentlyContinue
   return spawn(psBin, ["-NoProfile", "-NonInteractive", "-Command", cmd], {
     stdio: "ignore",
     detached: true,
+    ...NO_CONSOLE_WINDOW,
   });
 }
 
@@ -138,6 +139,7 @@ function playWslSound(file: string, volume: number, waitSeconds: number): ChildP
     const child = spawn("paplay", [`--volume=${paVol}`, file], {
       stdio: "ignore",
       detached: true,
+      ...NO_CONSOLE_WINDOW,
       env,
     });
     child.on("exit", () => {
@@ -173,6 +175,7 @@ export function playSound(file: string, volume: number, waitSeconds = 2): void {
       child = spawn("afplay", ["-v", String(volume), file], {
         stdio: "ignore",
         detached: true,
+        ...NO_CONSOLE_WINDOW,
       });
       break;
 
@@ -187,16 +190,24 @@ export function playSound(file: string, volume: number, waitSeconds = 2): void {
       // background process — there's no WPF Dispatcher message pump.
       const winPlayer = detectWindowsPlayer();
 
+      // detached:false on Windows, for the same reason the winmm fallback
+      // below uses it: Node documents that a detached Windows child "will have
+      // its own console window", which is exactly the terminal that flashed on
+      // every sound. ffplay resolves to the Chocolatey shim — a
+      // CONSOLE-subsystem executable — so it inherited (and showed) that
+      // console. windowsHide alone is not enough here: CREATE_NO_WINDOW is
+      // ignored when a new console is requested. unref() below still lets the
+      // harness exit while the clip finishes.
       if (winPlayer === "ffplay") {
         child = spawn("ffplay", ["-nodisp", "-autoexit", "-volume", String(pct(volume)), file], {
-          stdio: "ignore", detached: true,
+          stdio: "ignore", detached: false, ...NO_CONSOLE_WINDOW,
         });
         break;
       }
 
       if (winPlayer === "mpv") {
         child = spawn("mpv", ["--no-video", `--volume=${pct(volume)}`, file], {
-          stdio: "ignore", detached: true,
+          stdio: "ignore", detached: false, ...NO_CONSOLE_WINDOW,
         });
         break;
       }
@@ -223,6 +234,7 @@ export function playSound(file: string, volume: number, waitSeconds = 2): void {
       child = spawn(psBin, ["-NoProfile", "-NonInteractive", "-Command", cmd], {
         stdio: "ignore",
         detached: false,
+        ...NO_CONSOLE_WINDOW,
       });
       break;
     }
@@ -243,36 +255,36 @@ export function playSound(file: string, volume: number, waitSeconds = 2): void {
       switch (player) {
         case "pw-play":
           child = spawn("pw-play", ["--volume", String(volume), file], {
-            stdio: "ignore", detached: true,
+            stdio: "ignore", detached: true, ...NO_CONSOLE_WINDOW,
           });
           break;
         case "paplay": {
           const paVol = Math.max(0, Math.min(65536, Math.round(volume * 65536)));
           child = spawn("paplay", [`--volume=${paVol}`, file], {
-            stdio: "ignore", detached: true,
+            stdio: "ignore", detached: true, ...NO_CONSOLE_WINDOW,
           });
           break;
         }
         case "ffplay": {
           child = spawn("ffplay", ["-nodisp", "-autoexit", "-volume", String(pct(volume)), file], {
-            stdio: "ignore", detached: true,
+            stdio: "ignore", detached: true, ...NO_CONSOLE_WINDOW,
           });
           break;
         }
         case "mpv": {
           child = spawn("mpv", ["--no-video", `--volume=${pct(volume)}`, file], {
-            stdio: "ignore", detached: true,
+            stdio: "ignore", detached: true, ...NO_CONSOLE_WINDOW,
           });
           break;
         }
         case "play":
           child = spawn("play", ["-v", String(volume), file], {
-            stdio: "ignore", detached: true,
+            stdio: "ignore", detached: true, ...NO_CONSOLE_WINDOW,
           });
           break;
         case "aplay":
           child = spawn("aplay", ["-q", file], {
-            stdio: "ignore", detached: true,
+            stdio: "ignore", detached: true, ...NO_CONSOLE_WINDOW,
           });
           break;
       }

@@ -22,6 +22,7 @@
  */
 
 import { execSync } from "node:child_process";
+import { NO_CONSOLE_WINDOW } from "./platform.ts";
 
 /** Maximum characters of the assistant's last response to show in the body. */
 const MAX_SUMMARY_CHARS = 120;
@@ -68,6 +69,7 @@ function readGitRepoName(cwd: string): string | null {
       stdio: ["ignore", "pipe", "ignore"],
       timeout: 2000,
       encoding: "utf8",
+      ...NO_CONSOLE_WINDOW,
     }).trim();
     if (!out) return null;
     // Trim trailing slash, take last path segment, strip .git suffix

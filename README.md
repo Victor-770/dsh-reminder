@@ -2,7 +2,7 @@
 
 > peon-ping sound notifications for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (dsh) — a **faithful port** of the pi plugin [`pi-peon-ping-win`](https://github.com/Gohan/pi-peon-ping-win).
 
-Plays themed audio clips (Warcraft III Peon, GLaDOS, Duke Nukem, StarCraft, …) on lifecycle events using [OpenPeon](https://github.com/PeonPing/og-packs) sound packs, and shows desktop notifications — with native Windows support (three-tier audio fallback `ffplay` → `mpv` → `winmm.dll PlaySound`, custom WinForms popup).
+Plays themed audio clips (Warcraft III Peon, GLaDOS, Duke Nukem, StarCraft, …) on lifecycle events using [OpenPeon](https://github.com/PeonPing/og-packs) sound packs, and shows desktop notifications — with native Windows support (three-tier audio fallback `ffplay` → `mpv` → `winmm.dll PlaySound`, and a native Windows toast notification).
 
 ## Acknowledgments
 
@@ -90,7 +90,7 @@ To install specific packs from the registry directly, edit `~/.config/peon-ping/
 | macOS | `afplay` (built-in) | `osascript` |
 | Linux | `pw-play`, `paplay`, `ffplay`, `mpv`, `play`, or `aplay` (first found) | `notify-send` (desktop session required) |
 | WSL | PowerShell `MediaPlayer` — the WSL path is converted to the Windows view (`wslpath -w` → `\\wsl.localhost\<distro>\...` or `D:\...`) so the spawned Windows PowerShell can actually open the file | Windows Toast (text-only; no icon — WinRT silently drops icons from WSL paths) |
-| **Windows (native)** ⭐ | `ffplay` (recommended, `winget install Gyan.FFmpeg`) → `mpv` → `winmm.dll PlaySound` fallback (no volume control) | Custom WinForms popup (multi-monitor, no AUMID needed) |
+| **Windows (native)** ⭐ | `ffplay` (recommended, `winget install Gyan.FFmpeg`) → `mpv` → `winmm.dll PlaySound` fallback (no volume control) | Native Windows toast (bottom-right + Action Center; silenced, so only the pack clip is heard) |
 
 WSL audio works out of the box on any distro: the `\\wsl.localhost\<distro>\...` prefix, the user name, and the `/mnt/<drive>` mounts are resolved dynamically by `wslpath -w` per machine — nothing is hardcoded.
 

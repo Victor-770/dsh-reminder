@@ -2,7 +2,7 @@
 
 > [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（dsh）的 peon-ping 声音通知插件 —— **忠实移植**自 pi 插件 [`pi-peon-ping-win`](https://github.com/Gohan/pi-peon-ping-win)。
 
-在生命周期事件时播放主题音效（魔兽争霸 III 苦工、GLaDOS、Duke Nukem、星际争霸等），并显示桌面通知 —— 支持原生 Windows（三级音频回退：`ffplay` → `mpv` → `winmm.dll PlaySound`，自定义 WinForms 弹窗）。
+在生命周期事件时播放主题音效（魔兽争霸 III 苦工、GLaDOS、Duke Nukem、星际争霸等），并显示桌面通知 —— 支持原生 Windows（三级音频回退：`ffplay` → `mpv` → `winmm.dll PlaySound`，Windows 原生 Toast 通知）。
 
 ## 致谢
 
@@ -89,7 +89,7 @@ dsh plugin --profile web remove dsh-reminder
 | macOS | `afplay`（内置） | `osascript` |
 | Linux | `pw-play`、`paplay`、`ffplay`、`mpv`、`play`、`aplay`（按顺序探测） | `notify-send`（需要桌面环境） |
 | WSL | PowerShell `MediaPlayer` —— WSL 路径会先经 `wslpath -w` 转换成 Windows 视图（`\\wsl.localhost\<发行版>\...` 或 `D:\...`），Windows 侧才能真正打开文件 | Windows Toast（纯文本，无图标 —— WinRT 对 WSL 路径的图标会静默丢弃） |
-| **Windows（原生）** ⭐ | `ffplay`（推荐，`winget install Gyan.FFmpeg`）→ `mpv` → `winmm.dll PlaySound` 回退（无音量控制） | 自绘 WinForms 弹窗（多显示器、无需 AUMID） |
+| **Windows（原生）** ⭐ | `ffplay`（推荐，`winget install Gyan.FFmpeg`）→ `mpv` → `winmm.dll PlaySound` 回退（无音量控制） | Windows 原生 Toast 通知（右下角 + 通知中心；已静音，只保留音效包的声音） |
 
 WSL 音频在任意发行版上开箱即用：`\\wsl.localhost\<发行版>\...` 前缀、用户名、`/mnt/<盘符>` 挂载都由 `wslpath -w` 在每台机器上动态解析 —— **没有任何写死的路径**。
 

@@ -24,9 +24,9 @@ describe("notification", () => {
       expect(detectNotifier("wsl")).toBe("powershell");
     });
 
-    it("returns 'winforms' on native windows", async () => {
+    it("returns 'wintoast' on native windows", async () => {
       const { detectNotifier } = await import("../src/notification");
-      expect(detectNotifier("win")).toBe("winforms");
+      expect(detectNotifier("win")).toBe("wintoast");
     });
 
     it("returns null on unknown platform", async () => {
@@ -78,6 +78,33 @@ describe("notification", () => {
       expect(script).toContain("NoActivateForm");
       expect(script).toContain("Title");
       expect(script).toContain("Body");
+    });
+
+    it("builds a native toast command for windows", async () => {
+      const { buildNotifyCommand } = await import("../src/notification");
+      const cmd = buildNotifyCommand("wintoast", "Title", "Body", "C:/icon.png");
+      expect(cmd).not.toBeNull();
+      expect(cmd!.bin).toMatch(/^(pwsh|powershell)(\.exe)?$/);
+      const script = cmd!.args[cmd!.args.length - 1];
+      // Registering the AppUserModelID is what makes WinRT display anything.
+      expect(script).toContain("AppUserModelId");
+      expect(script).toContain("ToastNotificationManager");
+      expect(script).toContain("IconUri");
+      expect(script).toContain("CreateTextNode('Title')");
+      expect(script).toContain("CreateTextNode('Body')");
+      // The plugin's own clip is the alert sound; the shell chime must be off.
+      expect(script).toContain(`SetAttribute('silent', 'true')`);
+    });
+
+    it("doubles single quotes in the native toast script", async () => {
+      // Same failure mode as the WSL toast: a bare ' would end the
+      // PowerShell string literal and silently kill the notification.
+      const { buildNotifyCommand } = await import("../src/notification");
+      const cmd = buildNotifyCommand("wintoast", "it's done", "playCategorySound('task.complete')");
+      expect(cmd).not.toBeNull();
+      const script = cmd!.args[cmd!.args.length - 1];
+      expect(script).toContain("CreateTextNode('it''s done')");
+      expect(script).toContain("CreateTextNode('playCategorySound(''task.complete'')')");
     });
 
     it("returns null for unknown notifier", async () => {
