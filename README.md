@@ -53,6 +53,8 @@ dsh plugin --profile web add dsh-reminder
 
 Restart the harness (or reload the profile) so the new bundle layer mounts. The bundle patch (`cordis.patch.yml`) inserts the `peon-ping` plugin row automatically — no manual `cordis.patch.yml` editing.
 
+On the first session where no sound packs are installed, the plugin fetches the recommended pack (`sc_kerrigan`, ~0.4 MB) in the background — so it beeps without any setup. Only one attempt is made per run; if it fails, the log points at Settings → **peon-ping sound notifications** for the manual install (which also gets the other nine default packs).
+
 To install from a local checkout:
 
 ```bash

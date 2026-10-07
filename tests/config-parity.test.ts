@@ -1,4 +1,13 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
+
+// The `session/created` handler below now kicks off a background pack download
+// when the machine has no packs. Stub the installer so this suite can never
+// reach the network (a clean CI box has no packs).
+const { runInstallMock } = vi.hoisted(() => ({ runInstallMock: vi.fn() }));
+vi.mock("../src/ui", () => ({
+  runInstall: runInstallMock,
+  previewPackSound: () => null,
+}));
 
 describe("config parity with upstream peon-ping", () => {
   describe("PeonConfig type has all upstream fields", () => {

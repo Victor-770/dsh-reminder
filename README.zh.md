@@ -54,6 +54,8 @@ dsh plugin --profile web add dsh-reminder
 
 重启 harness（或重载 profile），让新的 bundle 层挂载。bundle patch（`cordis.patch.yml`）会自动插入 `peon-ping` 插件行 —— 无需手动编辑 `cordis.patch.yml`。
 
+首次运行且一个音效包都没有时，插件会在后台自动下载推荐包 `sc_kerrigan`（约 0.4 MB），开箱即可响。每次运行只尝试一次；失败时日志会指向 设置 → **peon-ping 声音通知** 手动安装（那里同时能装另外 9 个默认包）。
+
 从本地目录安装：
 
 ```bash

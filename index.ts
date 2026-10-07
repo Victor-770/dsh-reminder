@@ -33,6 +33,7 @@ import './src/compaction-events.ts'
 
 import { playCategorySound, sendNotification } from './src/audio.ts'
 import { ensureDirs, loadConfig, loadState, saveConfig, saveState } from './src/config.ts'
+import { RECOMMENDED_PACK } from './src/constants.ts'
 import { buildNotifyContent, extractAssistantText, extractToolErrorText, resolveProjectName } from './src/notify-content.ts'
 import { listPacks } from './src/packs.ts'
 import { checkRelayHealth, detectRemoteSession, getRelayUrl, relaySetupInstructions } from './src/relay.ts'
@@ -233,6 +234,36 @@ export function apply(ctx: Context): void {
     return resolveProjectName(cwd, snapshot?.title)
   }
 
+  /**
+   * A fresh install has no packs, so every hook would stay silent. Fetch the
+   * recommended pack once, in the background; the Settings page's install
+   * button stays the manual path (and the way to get the other nine).
+   *
+   * The one-shot flag is deliberately never reset: an offline machine logs the
+   * pointer to Settings once instead of retrying the download every session.
+   */
+  let bootstrappedPacks = false
+  const bootstrapRecommendedPack = (): void => {
+    if (bootstrappedPacks) return
+    bootstrappedPacks = true
+
+    const settingsHint = `Install a sound pack under Settings › "peon-ping 声音通知".`
+    ctx.logger.info(`peon-ping: no sound packs yet — fetching "${RECOMMENDED_PACK}" in the background.`)
+
+    void runInstall([RECOMMENDED_PACK], (message) => ctx.logger.info(`peon-ping: ${message}`))
+      .then((report) => {
+        if (report.installed === 0) {
+          ctx.logger.warn(`peon-ping: could not fetch "${RECOMMENDED_PACK}". ${settingsHint}`)
+          return
+        }
+        // Adopt the new pack without waiting for the next event to reload.
+        config = loadConfig()
+        state = loadState()
+        ctx.logger.info(`peon-ping: "${RECOMMENDED_PACK}" is ready.`)
+      })
+      .catch(() => ctx.logger.warn(`peon-ping: could not fetch "${RECOMMENDED_PACK}". ${settingsHint}`))
+  }
+
   // pi `session_start` — a new top-level session entered the store.
   ctx.on('session/created', (session: Session) => {
     if (!isTopLevel(session)) return
@@ -253,7 +284,7 @@ export function apply(ctx: Context): void {
     }
 
     if (!relayUrl && !hasPacks()) {
-      ctx.logger.warn('peon-ping: no sound packs. Run /peon install')
+      bootstrapRecommendedPack()
       return
     }
 
