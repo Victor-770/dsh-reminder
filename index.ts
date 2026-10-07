@@ -8,7 +8,8 @@
  *   pi `session_start`          → dsh `session/created` (top-level sessions)
  *   pi `before_agent_start`     → dsh `user/message` (kind 'user'; prompt capture)
  *   pi `agent_start`            → dsh `turn/start` (spam detection + ack)
- *   pi `tool_execution_end` err → dsh `tool/result` with isError
+ *   pi `tool_execution_end` err → dsh `tool/result` with isError (0.2: a
+ *                                 first-class `role: 'tool'` message)
  *   pi `agent_end`              → dsh `turn/end` (task complete + summary popup)
  *   pi `session_compact`        → dsh `compaction/end` (fires AFTER compaction)
  *
@@ -32,7 +33,7 @@ import './src/compaction-events.ts'
 
 import { playCategorySound, sendNotification } from './src/audio.ts'
 import { ensureDirs, loadConfig, loadState, saveConfig, saveState } from './src/config.ts'
-import { buildNotifyContent, extractLastAssistantText, extractToolErrorText, resolveProjectName } from './src/notify-content.ts'
+import { buildNotifyContent, extractAssistantText, extractToolErrorText, resolveProjectName } from './src/notify-content.ts'
 import { listPacks } from './src/packs.ts'
 import { checkRelayHealth, detectRemoteSession, getRelayUrl, relaySetupInstructions } from './src/relay.ts'
 import { previewPackSound, runInstall } from './src/ui.ts'
@@ -54,7 +55,7 @@ interface SessionTitleLike {
 /**
  * Structural `webServer` service (host HTTP routes): the settings page of
  * this plugin talks to the host through its own `/peon/api` HTTP prefix
- * instead of the apiproxy `settings.*` RPC channel — dsh rc.6 exposes only
+ * instead of the apiproxy `settings.*` RPC channel — the harness exposes only
  * an allowlisted set of settings namespaces to web clients
  * (`dsh-host-apiproxy`'s `WEB_SETTINGS_NAMESPACES`), and third-party
  * namespaces are filtered out (answered `settings-not-exposed`) even when
@@ -101,19 +102,6 @@ function blocksText(content: readonly unknown[] | undefined): string {
 function isTopLevel(session: Session): boolean {
   const depth = session.header.delegationDepth
   return depth === undefined || depth === 0
-}
-
-/** Look up the tool name for a `tool/result` by walking back to its `tool/call`. */
-function toolNameFor(session: Session, callId: unknown): string {
-  if (typeof callId !== 'string') return 'tool'
-  for (let i = session.events.length - 1; i >= 0; i--) {
-    const event = session.events[i]
-    if (event?.type === 'tool/call' && String((event.data as { callId?: unknown }).callId) === callId) {
-      const name = (event.data as { name?: unknown }).name
-      return typeof name === 'string' ? name : 'tool'
-    }
-  }
-  return 'tool'
 }
 
 /** Short human label for an unexpected turn end (popup body). */
@@ -213,9 +201,22 @@ export function apply(ctx: Context): void {
   let installing = false
 
   // Per-session runtime facts (the pi plugin tracked these globally because
-  // it had exactly one session per process; the harness hosts many).
+  // it had exactly one session per process; the harness hosts many). The
+  // 0.2 session log is append-only with no synchronous event access, so the
+  // facts other events carry are tracked from the firehose instead of read
+  // back from the log.
   const sessionStartTimes = new WeakMap<Session, number>()
   const currentPrompts = new WeakMap<Session, string>()
+  /** callId → tool name, recorded from `tool/call` (results carry only the callId). */
+  const toolCallNames = new WeakMap<Session, Map<string, string>>()
+  /** Most recent non-empty assistant text, for the completion popup body. */
+  const lastAssistantTexts = new WeakMap<Session, string>()
+
+  /** Look up the tool name for a `tool/result` from the tracked `tool/call` records. */
+  const toolNameFor = (session: Session, callId: unknown): string => {
+    if (typeof callId !== 'string') return 'tool'
+    return toolCallNames.get(session)?.get(callId) ?? 'tool'
+  }
 
   const hasPacks = () => listPacks().length > 0
 
@@ -265,13 +266,27 @@ export function apply(ctx: Context): void {
     playCategorySound('session.start', config, state)
   })
 
+  // 0.2 bookkeeping from the firehose: `tool/call` gives a `tool/result` its
+  // tool name (the result message carries only the callId), and
+  // `assistant/message` keeps the last assistant text for the popup body.
+  ctx.on('session/event', (session: Session, event: SessionEvent) => {
+    if (!isTopLevel(session)) return
+    if (event.type === 'tool/call') {
+      let names = toolCallNames.get(session)
+      if (names === undefined) toolCallNames.set(session, (names = new Map()))
+      names.set(String(event.data.callId), event.data.name)
+    } else if (event.type === 'assistant/message') {
+      const text = extractAssistantText(event.data.message)
+      if (text !== '') lastAssistantTexts.set(session, text)
+    }
+  })
+
   // pi `before_agent_start` — capture the user's prompt for popup echo.
   ctx.on('session/event', (session: Session, event: SessionEvent) => {
     if (!isTopLevel(session)) return
     if (event.type !== 'user/message') return
-    const source = (event.data as { source?: { kind?: string } }).source
-    if (!source || source.kind !== 'user') return
-    currentPrompts.set(session, blocksText((event.data as { content?: unknown[] }).content).slice(0, 200))
+    if (event.data.source.kind !== 'user') return
+    currentPrompts.set(session, blocksText(event.data.content).slice(0, 200))
   })
 
   // pi `agent_start` — rapid-prompt spam detection + acknowledge sound.
@@ -300,16 +315,16 @@ export function apply(ctx: Context): void {
   // notification. An individual tool failure does NOT terminate the task, so
   // by default it stays silent (`tool_error_sounds: false`) — both the beep
   // AND the popup follow that switch; only whole-task failures announce
-  // themselves (see the turn/end handler).
+  // themselves (see the turn/end handler). In 0.2 the result is a first-class
+  // `role: 'tool'` message (`isError` on the message itself, the user-facing
+  // failure reason beside it) — the old `tool-result` content block no longer
+  // exists.
   ctx.on('session/event', (session: Session, event: SessionEvent) => {
     if (!isTopLevel(session)) return
     if (event.type !== 'tool/result') return
 
-    const data = event.data as { message?: { content?: readonly unknown[] } }
-    const block = data.message?.content?.[0]
-    if (!block || typeof block !== 'object') return
-    const toolResult = block as { type?: string; isError?: boolean }
-    if (toolResult.type !== 'tool-result' || !toolResult.isError) return
+    const data = event.data
+    if (!data.message.isError) return
 
     config = loadConfig()
     state = loadState()
@@ -320,10 +335,8 @@ export function apply(ctx: Context): void {
 
       if (config.enabled && !state.paused && config.desktop_notifications) {
         const project = projectName(session)
-        const errText = extractToolErrorText(toolResult)
-        const detail = errText || 'failed'
-        const source = (event.data as { message?: { source?: { callId?: unknown } } }).message?.source
-        const toolName = toolNameFor(session, source?.callId)
+        const toolName = toolNameFor(session, String(data.message.toolCallId))
+        const detail = extractToolErrorText(data) || 'failed'
         const { title, body } = buildNotifyContent('error', project, `[${toolName}]: ${detail}`)
         sendNotification(title, body, config, undefined, 'error', currentPrompts.get(session))
       }
@@ -358,7 +371,7 @@ export function apply(ctx: Context): void {
 
       if (config.enabled && !state.paused) {
         const project = projectName(session)
-        const summary = extractLastAssistantText(session.events)
+        const summary = lastAssistantTexts.get(session) ?? ''
         const { title, body } = buildNotifyContent('done', project, summary || undefined)
         sendNotification(title, body, config, undefined, 'done', currentPrompts.get(session))
       }
@@ -403,7 +416,7 @@ export function apply(ctx: Context): void {
   // the host through a plugin-owned `/peon/api` HTTP prefix (get / set /
   // action), which the host bridges to the pi config / state files and to
   // pack install / preview / refresh. A plugin-owned route is used instead of
-  // the `peon-ping` settings namespace because dsh rc.6's apiproxy exposes
+  // the `peon-ping` settings namespace because the harness apiproxy exposes
   // only allowlisted settings namespaces to web clients — a third-party
   // namespace is filtered from `settings.describe` and answers
   // `settings-not-exposed` even when registered. The route mounts once the

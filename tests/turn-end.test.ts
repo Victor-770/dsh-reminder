@@ -112,13 +112,14 @@ describe("default sound routing (dsh port)", () => {
   });
 
   it("tool/result error stays fully silent by default (tool_error_sounds false)", async () => {
-    const session = makeSession([{
-      type: "tool/call",
-      seq: 0,
-      time: 0,
-      data: { turn: 1, step: 1, callId: "c-1", name: "bash", arguments: "{}" },
-    }]);
+    const session = makeSession();
     for (const handler of listeners["session/event"]!) {
+      await handler(session, {
+        type: "tool/call",
+        seq: 0,
+        time: 0,
+        data: { turn: 1, step: 1, callId: "c-1", name: "bash", arguments: "{}" },
+      } as any);
       await handler(session, {
         type: "tool/result",
         seq: 1,
@@ -127,10 +128,12 @@ describe("default sound routing (dsh port)", () => {
           turn: 1,
           step: 1,
           message: {
-            role: "user",
+            role: "tool",
             id: "m-1",
+            toolCallId: "c-1",
+            isError: true,
             source: { kind: "tool", callId: "c-1" },
-            content: [{ type: "tool-result", toolCallId: "c-1", content: [{ type: "text", text: "nope" }], isError: true }],
+            content: [{ type: "text", text: "nope" }],
           },
         },
       } as any);
@@ -147,13 +150,16 @@ describe("default sound routing (dsh port)", () => {
       relay_mode: "relay",
       tool_error_sounds: true,
     });
-    const session = makeSession([{
-      type: "tool/call",
-      seq: 0,
-      time: 0,
-      data: { turn: 1, step: 1, callId: "c-1", name: "bash", arguments: "{}" },
-    }]);
+    const session = makeSession();
     for (const handler of listeners["session/event"]!) {
+      // The tool name comes from the earlier `tool/call` event (0.2 results
+      // carry only the callId), so the firehose replays it first.
+      await handler(session, {
+        type: "tool/call",
+        seq: 0,
+        time: 0,
+        data: { turn: 1, step: 1, callId: "c-1", name: "bash", arguments: "{}" },
+      } as any);
       await handler(session, {
         type: "tool/result",
         seq: 1,
@@ -162,11 +168,14 @@ describe("default sound routing (dsh port)", () => {
           turn: 1,
           step: 1,
           message: {
-            role: "user",
+            role: "tool",
             id: "m-1",
+            toolCallId: "c-1",
+            isError: true,
             source: { kind: "tool", callId: "c-1" },
-            content: [{ type: "tool-result", toolCallId: "c-1", content: [{ type: "text", text: "nope" }], isError: true }],
+            content: [{ type: "text", text: "nope" }],
           },
+          error: { name: "ToolError", code: "exit-1", reason: "Command exited with code 1" },
         },
       } as any);
     }

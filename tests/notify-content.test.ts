@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   buildNotifyContent,
-  extractLastAssistantText,
+  extractAssistantText,
   extractToolErrorText,
   resolveProjectName,
 } from "../src/notify-content";
@@ -20,62 +20,57 @@ describe("resolveProjectName", () => {
   });
 });
 
-describe("extractLastAssistantText (dsh session events)", () => {
-  it("returns the last assistant text message", () => {
-    const events = [
-      { type: "user/message", seq: 0, time: 0, data: { role: "user", id: "u", source: { kind: "user" }, content: [{ type: "text", text: "hi" }] } },
-      { type: "assistant/message", seq: 1, time: 1, data: { turn: 1, step: 1, message: { role: "assistant", id: "a1", source: { kind: "model", provider: "p", model: "m" }, content: [{ type: "text", text: "First response" }] } } },
-      { type: "assistant/message", seq: 2, time: 2, data: { turn: 1, step: 2, message: { role: "assistant", id: "a2", source: { kind: "model", provider: "p", model: "m" }, content: [{ type: "text", text: "Second response" }] } } },
-    ] as any[];
-
-    expect(extractLastAssistantText(events)).toBe("Second response");
+describe("extractAssistantText (assistant/message payload)", () => {
+  it("extracts the message's text", () => {
+    const message = { role: "assistant", id: "a1", source: { kind: "model", provider: "p", model: "m" }, content: [{ type: "text", text: "First response" }] };
+    expect(extractAssistantText(message)).toBe("First response");
   });
 
-  it("skips tool-call-only turns", () => {
-    const events = [
-      { type: "assistant/message", seq: 0, time: 0, data: { turn: 1, step: 1, message: { role: "assistant", id: "a1", source: { kind: "model", provider: "p", model: "m" }, content: [{ type: "tool-call", id: "c", name: "bash", arguments: "{}" }] } } },
-    ] as any[];
-
-    expect(extractLastAssistantText(events)).toBe("");
+  it("skips tool-call-only messages", () => {
+    const message = { role: "assistant", id: "a1", source: { kind: "model", provider: "p", model: "m" }, content: [{ type: "tool-call", id: "c", name: "bash", arguments: "{}" }] };
+    expect(extractAssistantText(message)).toBe("");
   });
 
   it("truncates long text", () => {
     const long = "word ".repeat(50);
-    const events = [
-      { type: "assistant/message", seq: 0, time: 0, data: { turn: 1, step: 1, message: { role: "assistant", id: "a1", source: { kind: "model", provider: "p", model: "m" }, content: [{ type: "text", text: long }] } } },
-    ] as any[];
-
-    const result = extractLastAssistantText(events);
+    const message = { role: "assistant", id: "a1", source: { kind: "model", provider: "p", model: "m" }, content: [{ type: "text", text: long }] };
+    const result = extractAssistantText(message);
     expect(result.length).toBeLessThan(long.length);
     expect(result.endsWith("…")).toBe(true);
   });
 
-  it("returns empty for undefined events", () => {
-    expect(extractLastAssistantText(undefined)).toBe("");
+  it("returns empty for an undefined message", () => {
+    expect(extractAssistantText(undefined)).toBe("");
   });
 });
 
-describe("extractToolErrorText", () => {
-  it("extracts text from a tool-result block", () => {
-    const block = {
-      type: "tool-result",
-      toolCallId: "c-1",
-      content: [{ type: "text", text: "stdout\nstderr" }],
-      isError: true,
+describe("extractToolErrorText (0.2 tool/result data)", () => {
+  it("prefers the user-facing error reason", () => {
+    const data = {
+      message: { role: "tool", id: "t1", toolCallId: "c-1", isError: true, source: { kind: "tool", callId: "c-1" }, content: [{ type: "text", text: "stdout\nstderr" }] },
+      error: { name: "ToolError", code: "exit-1", reason: "Command exited with code 1" },
     };
-    const result = extractToolErrorText(block);
+    const result = extractToolErrorText(data);
+    expect(result).toBe("Command exited with code 1");
+  });
+
+  it("falls back to the tool message's text blocks", () => {
+    const data = {
+      message: { role: "tool", id: "t1", toolCallId: "c-1", isError: true, source: { kind: "tool", callId: "c-1" }, content: [{ type: "text", text: "stdout\nstderr" }] },
+    };
+    const result = extractToolErrorText(data);
     expect(result).toContain("stdout");
     expect(result).toContain("stderr");
   });
 
   it("returns empty when no text blocks", () => {
-    const block = { type: "tool-result", toolCallId: "c-2", content: [], isError: true };
-    expect(extractToolErrorText(block)).toBe("");
+    const data = { message: { role: "tool", id: "t2", toolCallId: "c-2", isError: true, source: { kind: "tool", callId: "c-2" }, content: [] } };
+    expect(extractToolErrorText(data)).toBe("");
   });
 
   it("returns empty for non-object input", () => {
-    expect(extractToolErrorText(null)).toBe("");
-    expect(extractToolErrorText("oops")).toBe("");
+    expect(extractToolErrorText(null as never)).toBe("");
+    expect(extractToolErrorText("oops" as never)).toBe("");
   });
 });
 

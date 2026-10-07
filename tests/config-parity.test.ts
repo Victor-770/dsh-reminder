@@ -93,7 +93,7 @@ describe("config parity with upstream peon-ping", () => {
       expect(listeners["session/created"]).toBeDefined();
       expect(listeners["session/event"]).toBeDefined();
       // turn/start, tool/result, turn/end, compaction/end + user/message prompt capture
-      expect(listeners["session/event"]!.length).toBe(5);
+      expect(listeners["session/event"]!.length).toBe(6);
     });
 
     it("session/created handler completes without throwing", async () => {

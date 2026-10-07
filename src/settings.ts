@@ -3,7 +3,7 @@
  *
  * The web GUI's Settings page (client half of this package) reads and writes
  * the host through this plugin's own `/peon/api` HTTP route — not through a
- * settings namespace, because dsh rc.6's apiproxy only exposes allowlisted
+ * settings namespace, because the harness apiproxy only exposes allowlisted
  * namespaces to web clients (third-party namespaces are filtered even when
  * registered). The host bridges the section to the same
  * `~/.config/peon-ping/config.json` + `state.json` files the pi plugin uses,

@@ -16,12 +16,12 @@
  *
  * Ported from pi-peon-ping-win's `src/notify-content.ts`: the pi
  * `ExtensionAPI` session-name lookup became the Harness `sessionTitle`
- * service (optional), and the pi `AgentMessage[]` history became the DSH
- * `SessionEvent[]` log (`assistant/message` events).
+ * service (optional), and the pi `AgentMessage[]` history became the
+ * `assistant/message` event's message (tracked from the `session/event`
+ * firehose).
  */
 
 import { execSync } from "node:child_process";
-import type { SessionEvent } from "@deepseek-ai/dsh-session";
 
 /** Maximum characters of the assistant's last response to show in the body. */
 const MAX_SUMMARY_CHARS = 120;
@@ -98,44 +98,42 @@ function blocksToText(content: readonly unknown[] | undefined, joinWith: string)
 }
 
 /**
- * Extract the assistant's last text response from the DSH session event log.
- * Used as the notification body so the popup shows what actually happened.
- *
- * Walks events in reverse to find the most recent `assistant/message` event
- * with non-empty text content. Tool-call-only turns are skipped — they don't
- * tell the user anything useful in a popup.
+ * Extract the assistant's last text response for the DSH completion popup.
+ * Takes the assembled assistant message straight from the `assistant/message`
+ * event (the 0.2 session log has no synchronous event access, so the plugin
+ * tracks the message from the firehose). Tool-call-only turns yield "" —
+ * they don't tell the user anything useful in a popup.
  */
-export function extractLastAssistantText(events: readonly SessionEvent[] | undefined): string {
-  if (!events || events.length === 0) return "";
-
-  for (let i = events.length - 1; i >= 0; i--) {
-    const event = events[i];
-    if (!event || typeof event !== "object") continue;
-    if (event.type !== "assistant/message") continue;
-
-    const message = (event as { data?: { message?: unknown } }).data?.message;
-    if (!message || typeof message !== "object") continue;
-    const content = (message as { content?: unknown }).content;
-
-    const text = blocksToText(Array.isArray(content) ? content : undefined, " ");
-    if (text) return truncate(text, MAX_SUMMARY_CHARS);
-  }
-
-  return "";
+export function extractAssistantText(
+  message: { readonly content?: readonly unknown[] } | undefined,
+): string {
+  if (!message) return "";
+  const content = (message as { content?: unknown }).content;
+  const text = blocksToText(Array.isArray(content) ? content : undefined, " ");
+  return text ? truncate(text, MAX_SUMMARY_CHARS) : "";
 }
 
 /**
- * Extract error text from a `tool/result` block's content.
+ * Extract error text from a 0.2 `tool/result` event's data.
  *
- * The DSH `tool/result` message carries a single `tool-result` block whose
- * `content` holds the tool's model-facing output: for the bash tool that is
+ * The preferred source is `error.reason` — the raw user-facing failure reason
+ * the 0.2 event carries beside the model content. When it is absent (or the
+ * tool only wrote its failure into its output) we fall back to the
+ * first-class `role: 'tool'` message's text blocks: for the bash tool that is
  * the combined stdout + stderr + "Command exited with code N"; for other
- * tools it's the thrown error message. We concatenate all text blocks and
- * truncate. Same shape as the pi plugin's `ToolExecutionEndEvent.result`.
+ * tools it's the thrown error message. Same shape as the pi plugin's
+ * `ToolExecutionEndEvent.result`.
  */
-export function extractToolErrorText(result: unknown): string {
+export function extractToolErrorText(result: {
+  readonly message?: { readonly content?: readonly unknown[] };
+  readonly error?: { readonly reason?: string };
+}): string {
   if (!result || typeof result !== "object") return "";
-  const content = (result as { content?: unknown }).content;
+  const reason = result.error?.reason;
+  if (typeof reason === "string" && reason.trim() !== "") {
+    return truncate(reason.trim(), MAX_SUMMARY_CHARS);
+  }
+  const content = (result.message as { content?: unknown } | undefined)?.content;
   if (!Array.isArray(content)) return "";
 
   const text = blocksToText(content, "\n");

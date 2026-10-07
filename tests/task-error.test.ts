@@ -54,7 +54,7 @@ describe("task.error event handling", () => {
       const { apply } = await import("../index");
       apply(stubCtx);
       expect(listeners["session/event"]).toBeDefined();
-      expect(listeners["session/event"]!.length).toBe(5);
+      expect(listeners["session/event"]!.length).toBe(6);
     });
 
     it("tool/result handler ignores non-error results", async () => {

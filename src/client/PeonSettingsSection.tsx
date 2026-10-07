@@ -5,7 +5,7 @@
  * refresh.
  *
  * A plugin-owned HTTP route is used instead of the `settingsScope` transport
- * because dsh rc.6's apiproxy only exposes allowlisted settings namespaces to
+ * because the harness apiproxy only exposes allowlisted settings namespaces to
  * web clients — a third-party namespace is filtered from `settings.describe`
  * and answers `settings-not-exposed` even when registered. The page talks to
  * the same host origin, so the browser-trust fence on `/peon/api` is

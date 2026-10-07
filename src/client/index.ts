@@ -4,16 +4,25 @@
  * Registers the "peon-ping sounds" page in web Settings right below
  * "Agent Presets" (`settings.section` order 21; agent-presets is 20). The
  * page reads and writes the host through the plugin's own `/peon/api` HTTP
- * prefix (get / set / action) instead of a settings namespace: dsh rc.6's
+ * prefix (get / set / action) instead of a settings namespace: the harness
  * apiproxy only exposes allowlisted settings namespaces to web clients, so
  * third-party namespaces are filtered out even when registered. The route is
  * served by this plugin's host half on the same origin, so the page needs no
  * settings-scope transport.
  *
+ * The browser context is the plain cordis `Context` with the `slots` and
+ * `locale` services seated by the shell (dsh 0.2 has no client-runtime
+ * package); the type-only imports below carry those services' declarations.
+ *
  * @module dsh-reminder/client
  */
 
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { Context } from '@deepseek-ai/cordis'
+// Type-only service vocabulary: ctx.slots lives on the renderer's
+// SlotRegistry, ctx.locale on the locale package's LocaleRuntime, and the
+// `settings.section` slot declaration on the ui-settings contract. All are
+// erased at runtime — the shell seats the services themselves.
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
@@ -34,7 +43,7 @@ export const NS = 'settings.peon'
 export const inject = ['slots', 'locale']
 
 /** Contribute the peon-ping sounds settings page. */
-export function apply(ctx: ClientContext): void {
+export function apply(ctx: Context): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'dsh-reminder: copy dictionaries')
 
   const t = ctx.locale.bind(NS)
