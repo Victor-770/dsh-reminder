@@ -104,7 +104,7 @@ Config, state, and packs live in the **same** files the pi plugin uses, so a mac
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `default_pack` | `"peon"` | Active sound pack |
+| `default_pack` | `"sc_kerrigan"` | Active sound pack (the port's recommended pack; it is listed first when installing the defaults) |
 | `volume` | `1.0` | Sound volume (0.0–1.0) |
 | `enabled` | `true` | Master on/off switch |
 | `desktop_notifications` | `true` | Show system notifications on task complete |

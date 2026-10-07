@@ -9,8 +9,16 @@ export const STATE_PATH = join(DATA_DIR, "state.json");
 
 export const LEGACY_PACKS = join(homedir(), ".claude", "hooks", "peon-ping", "packs");
 
+/**
+ * Fork default: the pack this port recommends, and therefore the one a fresh
+ * config activates. It also heads DEFAULT_PACK_NAMES below, so it is the first
+ * pack downloaded and the one `runInstall` falls back to when the configured
+ * pack turns out not to be installed.
+ */
+export const RECOMMENDED_PACK = "sc_kerrigan";
+
 export const DEFAULT_CONFIG: PeonConfig = {
-  default_pack: "peon",
+  default_pack: RECOMMENDED_PACK,
   // Fork default: 1.0 (upstream uses 0.5). peon-ping is an alert sound — at
   // 0.5 it's easy to miss on Windows where ffplay's volume scaling is lower
   // than upstream WPF MediaPlayer. Users who want it quieter can edit
@@ -67,7 +75,7 @@ export const VOLUME_STEPS = ["10%", "20%", "30%", "40%", "50%", "60%", "70%", "8
 
 export const REGISTRY_URL = "https://peonping.github.io/registry/index.json";
 export const DEFAULT_PACK_NAMES = [
-  "peon", "peasant", "glados", "sc_kerrigan", "sc_battlecruiser",
+  RECOMMENDED_PACK, "peon", "peasant", "glados", "sc_battlecruiser",
   "ra2_kirov", "dota2_axe", "duke_nukem", "tf2_engineer", "hd2_helldiver",
 ];
 export const FALLBACK_REPO = "PeonPing/og-packs";

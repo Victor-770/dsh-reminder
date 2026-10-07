@@ -23,7 +23,9 @@ describe("settings section (web UI bridge)", () => {
 
   it("buildSettingsEntry carries config, state, and packs", () => {
     const entry = base();
-    expect(entry.default_pack).toBe("peon");
+    // Assert the pass-through, not a specific pack: which pack is recommended
+    // is a product default that lives in one place (RECOMMENDED_PACK).
+    expect(entry.default_pack).toBe(DEFAULT_CONFIG.default_pack);
     expect(entry.volume).toBe(1);
     expect(entry.paused).toBe(false);
     expect(entry.packs).toEqual(["peon", "glados"]);

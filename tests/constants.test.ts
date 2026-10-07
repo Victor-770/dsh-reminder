@@ -5,13 +5,15 @@ import {
   CATEGORY_LABELS,
   VOLUME_STEPS,
   DEFAULT_PACK_NAMES,
+  RECOMMENDED_PACK,
   DATA_DIR,
   PACKS_DIR,
 } from "../src/constants";
 
 describe("constants", () => {
   it("DEFAULT_CONFIG has all required fields", () => {
-    expect(DEFAULT_CONFIG.default_pack).toBe("peon");
+    expect(DEFAULT_CONFIG.default_pack).toBe(RECOMMENDED_PACK);
+    expect(RECOMMENDED_PACK).toBe("sc_kerrigan");
     expect(DEFAULT_CONFIG.volume).toBe(1);
     expect(DEFAULT_CONFIG.enabled).toBe(true);
     expect(DEFAULT_CONFIG.annoyed_threshold).toBe(3);
@@ -54,6 +56,8 @@ describe("constants", () => {
   });
 
   it("DEFAULT_PACK_NAMES includes expected packs", () => {
+    // The recommended pack downloads first, and is runInstall's fallback.
+    expect(DEFAULT_PACK_NAMES[0]).toBe(RECOMMENDED_PACK);
     expect(DEFAULT_PACK_NAMES).toContain("peon");
     expect(DEFAULT_PACK_NAMES).toContain("glados");
     expect(DEFAULT_PACK_NAMES).toContain("duke_nukem");

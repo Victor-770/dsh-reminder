@@ -1,6 +1,6 @@
 {
   "name": "dsh-reminder",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "peon-ping sound notifications for DeepSeek Harness — a faithful port of the pi plugin pi-peon-ping-win (native Windows audio fallback, WinForms popup, OpenPeon sound packs). Beeps only when a task completes or terminates unexpectedly, by default. Settings live in the web Settings page (below Agent Presets).",
   "type": "module",
   "keywords": [

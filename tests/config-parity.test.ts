@@ -3,8 +3,8 @@ import { describe, it, expect, beforeEach } from "vitest";
 describe("config parity with upstream peon-ping", () => {
   describe("PeonConfig type has all upstream fields", () => {
     it("DEFAULT_CONFIG has default_pack instead of active_pack", async () => {
-      const { DEFAULT_CONFIG } = await import("../src/constants");
-      expect(DEFAULT_CONFIG.default_pack).toBe("peon");
+      const { DEFAULT_CONFIG, RECOMMENDED_PACK } = await import("../src/constants");
+      expect(DEFAULT_CONFIG.default_pack).toBe(RECOMMENDED_PACK);
       expect((DEFAULT_CONFIG as any).active_pack).toBeUndefined();
     });
 

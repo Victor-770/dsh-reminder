@@ -103,7 +103,7 @@ WSL 音频在任意发行版上开箱即用：`\\wsl.localhost\<发行版>\...` 
 
 | 选项 | 默认值 | 说明 |
 |--------|---------|-------------|
-| `default_pack` | `"peon"` | 当前音效包 |
+| `default_pack` | `"sc_kerrigan"` | 当前音效包（本移植版推荐的音效包，安装默认包时排在最前） |
 | `volume` | `1.0` | 音量（0.0–1.0） |
 | `enabled` | `true` | 总开关 |
 | `desktop_notifications` | `true` | 任务完成时显示系统通知 |
